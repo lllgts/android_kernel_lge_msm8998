@@ -25,6 +25,7 @@
 #define SYNAPTICS_DSX_DRIVER_PRODUCT (SYNAPTICS_DS4 | SYNAPTICS_DS5)
 #define SYNAPTICS_DSX_DRIVER_VERSION 0x2001
 
+#include <linux/pm_qos.h>
 #include <linux/version.h>
 #include <linux/debugfs.h>
 
@@ -314,6 +315,7 @@ struct synaptics_rmi4_data {
 	struct clk *core_clk;
 	struct clk *iface_clk;
 #endif
+	struct pm_qos_request pm_qos_req;
 };
 
 struct synaptics_dsx_bus_access {
