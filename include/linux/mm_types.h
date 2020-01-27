@@ -533,7 +533,8 @@ struct mm_struct {
 #endif
 
 	struct work_struct async_put_work;
-	bool va_feature;
+	unsigned int zygoteheap_in_MB;
+	int va_feature;
 	unsigned long va_feature_rnd;
 };
 
