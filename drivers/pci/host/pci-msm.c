@@ -6655,6 +6655,7 @@ int __init pcie_init(void)
 	mutex_init(&com_phy_lock);
 	mutex_init(&enumerate_lock);
 
+#ifdef CONFIG_IPC_LOGGING
 	for (i = 0; i < MAX_RC_NUM; i++) {
 		snprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-short", i);
 		msm_pcie_dev[i].ipc_log =
@@ -6708,6 +6709,7 @@ int __init pcie_init(void)
 		msm_pcie_dev_tbl[i].event_reg = NULL;
 		msm_pcie_dev_tbl[i].registered = true;
 	}
+#endif
 
 	msm_pcie_debugfs_init();
 
