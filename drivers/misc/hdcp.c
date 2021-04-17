@@ -1092,10 +1092,8 @@ static int hdcp_lib_library_load(struct hdcp_lib_handle *handle)
 	if (!hdcpsrm_handle) {
 		rc = qseecom_start_app(&hdcpsrm_handle,
 					SRMAPP_NAME, QSEECOM_SBUFF_SIZE);
-		if (rc) {
+		if (rc)
 			pr_err("qseecom_start_app failed for SRM TA %d\n", rc);
-			goto exit;
-		}
 	}
 
 	handle->hdcp_state |= HDCP_STATE_APP_LOADED;
@@ -1168,17 +1166,21 @@ static int hdcp_lib_library_unload(struct hdcp_lib_handle *handle)
 	}
 
 	/* deallocate the resources for qseecom hdcp2p2 handle */
-	rc = qseecom_shutdown_app(&handle->qseecom_handle);
-	if (rc) {
-		pr_err("hdcp2p2 qseecom_shutdown_app failed err: %d\n", rc);
-		goto exit;
+	if (handle->qseecom_handle) {
+		rc = qseecom_shutdown_app(&handle->qseecom_handle);
+		if (rc) {
+			pr_err("hdcp2p2 shutdown_app failed err: %d\n", rc);
+			goto exit;
+		}
 	}
 
 	/* deallocate the resources for qseecom hdcpsrm handle */
-	rc = qseecom_shutdown_app(&hdcpsrm_handle);
-	if (rc) {
-		pr_err("hdcpsrm qseecom_shutdown_app failed err: %d\n", rc);
-		goto exit;
+	if (hdcpsrm_handle) {
+		rc = qseecom_shutdown_app(&hdcpsrm_handle);
+		if (rc) {
+			pr_err("srm shutdown_app failed err: %d\n", rc);
+			goto exit;
+		}
 	}
 
 	handle->hdcp_state &= ~HDCP_STATE_APP_LOADED;

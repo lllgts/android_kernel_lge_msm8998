@@ -79,6 +79,7 @@ enum pageflags {
 	PG_dirty,
 	PG_lru,
 	PG_active,
+	PG_workingset,
 	PG_slab,
 	PG_owner_priv_1,	/* Owner use. If pagecache, fs may use*/
 	PG_arch_1,
@@ -262,26 +263,27 @@ static inline int __TestClearPage##uname(struct page *page) { return 0; }
 #define TESTSCFLAG_FALSE(uname)						\
 	TESTSETFLAG_FALSE(uname) TESTCLEARFLAG_FALSE(uname)
 
-__PAGEFLAG(Locked, locked, PF_NO_TAIL)
-PAGEFLAG(Error, error, PF_ANY) TESTCLEARFLAG(Error, error, PF_ANY)
-PAGEFLAG(Referenced, referenced, PF_ANY) TESTCLEARFLAG(Referenced, referenced, PF_ANY)
-	__SETPAGEFLAG(Referenced, referenced, PF_ANY)
-PAGEFLAG(Dirty, dirty, PF_ANY) TESTSCFLAG(Dirty, dirty, PF_ANY)
-	__CLEARPAGEFLAG(Dirty, dirty, PF_ANY)
-PAGEFLAG(LRU, lru, PF_ANY) __CLEARPAGEFLAG(LRU, lru, PF_ANY)
-PAGEFLAG(Active, active, PF_ANY) __CLEARPAGEFLAG(Active, active, PF_ANY)
-	TESTCLEARFLAG(Active, active, PF_ANY)
-__PAGEFLAG(Slab, slab, PF_ANY)
-PAGEFLAG(Checked, checked, PF_ANY)		/* Used by some filesystems */
-PAGEFLAG(Pinned, pinned, PF_ANY) TESTSCFLAG(Pinned, pinned, PF_ANY)	/* Xen */
-PAGEFLAG(SavePinned, savepinned, PF_ANY);			/* Xen */
-PAGEFLAG(Foreign, foreign, PF_ANY);				/* Xen */
-PAGEFLAG(Reserved, reserved, PF_ANY) __CLEARPAGEFLAG(Reserved, reserved, PF_ANY)
-PAGEFLAG(SwapBacked, swapbacked, PF_ANY)
-	__CLEARPAGEFLAG(SwapBacked, swapbacked, PF_ANY)
-	__SETPAGEFLAG(SwapBacked, swapbacked, PF_ANY)
+struct page;	/* forward declaration */
 
-__PAGEFLAG(SlobFree, slob_free, PF_ANY)
+TESTPAGEFLAG(Locked, locked)
+PAGEFLAG(Error, error) TESTCLEARFLAG(Error, error)
+PAGEFLAG(Referenced, referenced) TESTCLEARFLAG(Referenced, referenced)
+	__SETPAGEFLAG(Referenced, referenced)
+PAGEFLAG(Dirty, dirty) TESTSCFLAG(Dirty, dirty) __CLEARPAGEFLAG(Dirty, dirty)
+PAGEFLAG(LRU, lru) __CLEARPAGEFLAG(LRU, lru)
+PAGEFLAG(Active, active) __CLEARPAGEFLAG(Active, active)
+	TESTCLEARFLAG(Active, active)
+PAGEFLAG(Workingset, workingset)
+__PAGEFLAG(Slab, slab)
+PAGEFLAG(Checked, checked)		/* Used by some filesystems */
+PAGEFLAG(Pinned, pinned) TESTSCFLAG(Pinned, pinned)	/* Xen */
+PAGEFLAG(SavePinned, savepinned);			/* Xen */
+PAGEFLAG(Foreign, foreign);				/* Xen */
+PAGEFLAG(Reserved, reserved) __CLEARPAGEFLAG(Reserved, reserved)
+PAGEFLAG(SwapBacked, swapbacked) __CLEARPAGEFLAG(SwapBacked, swapbacked)
+	__SETPAGEFLAG(SwapBacked, swapbacked)
+
+__PAGEFLAG(SlobFree, slob_free)
 #ifdef CONFIG_ZCACHE
 PAGEFLAG(WasActive, was_active, PF_ANY)
 #else
@@ -389,13 +391,13 @@ static __always_inline int PageMappingFlags(struct page *page)
 
 static inline int PageAnon(struct page *page)
 {
-	return ((unsigned long)page->mapping & PAGE_MAPPING_ANON) != 0;
+   return ((unsigned long)page->mapping & PAGE_MAPPING_ANON) != 0;
 }
 
 static __always_inline int __PageMovable(struct page *page)
 {
-	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) ==
-				PAGE_MAPPING_MOVABLE;
+   return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) ==
+               PAGE_MAPPING_MOVABLE;
 }
 
 #ifdef CONFIG_KSM

@@ -202,10 +202,10 @@ struct fastrpc_ioctl_perf {			/* kernel performance data */
 	uintptr_t keys;
 };
 
-#define FASTRPC_CONTROL_LATENCY (1)
+#define FASTRPC_CONTROL_LATENCY	(1)
 struct fastrpc_ctrl_latency {
-	uint32_t enable;		/* latency control enable */
-	uint32_t level;			/* level of control */
+	uint32_t enable;	/*!latency control enable*/
+	uint32_t level;		/*!level of control*/
 };
 
 #define FASTRPC_CONTROL_SMMU	(2)

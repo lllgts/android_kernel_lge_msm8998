@@ -1216,6 +1216,11 @@ static void print_warning(struct dquot_warn *warn)
 		case QUOTA_NL_BSOFTWARN:
 			msg = " block quota exceeded.\r\n";
 			break;
+#ifdef CONFIG_MACH_LGE
+		default: // WBT 201551
+			msg = " unknown quota error.\r\n";
+			break;
+#endif
 	}
 	tty_write_message(tty, msg);
 	tty_kref_put(tty);

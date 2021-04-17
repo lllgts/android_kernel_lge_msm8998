@@ -3370,8 +3370,6 @@ exit:
 static void print_sfr_message(struct venus_hfi_device *device)
 {
 	struct hfi_sfr_struct *vsfr = NULL;
-	u32 vsfr_size = 0;
-	void *p = NULL;
 
 	/* Once SYS_ERROR received from HW, it is safe to halt the AXI.
 	 * With SYS_ERROR, Venus FW may have crashed and HW might be
@@ -3710,12 +3708,13 @@ err_no_work:
 	for (i = 0; !IS_ERR_OR_NULL(device->response_pkt) &&
 		i < num_responses; ++i) {
 		struct msm_vidc_cb_info *r = &device->response_pkt[i];
-		 if (!__core_in_valid_state(device)) {
-			dprintk(VIDC_ERR,
-				"Ignore responses from %d to %d as device is in invalid state",
-				(i + 1), num_responses);
-			break;
-		}
+
+        if (!__core_in_valid_state(device)) {
+            dprintk(VIDC_ERR,
+                "Ignore responses from %d to %d as device is in invalid state",
+                (i + 1), num_responses);
+            break;
+        }
 		device->callback(r->response_type, &r->response);
 	}
 

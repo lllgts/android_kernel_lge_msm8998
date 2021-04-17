@@ -58,7 +58,7 @@
 #define ADSP_MMAP_ADD_PAGES 0x1000
 
 #define FASTRPC_ENOSUCH 39
-#define VMID_SSC_Q6     38
+#define VMID_SSC_Q6    38
 #define VMID_ADSP_Q6    6
 #define AC_VM_ADSP_HEAP_SHARED 33
 #define DEBUGFS_SIZE 3072
@@ -1291,6 +1291,8 @@ static int get_args(uint32_t kernel, struct smq_invoke_ctx *ctx)
 
 	/* allocate new buffer */
 	if (copylen) {
+		DEFINE_DMA_ATTRS(ctx_attrs);
+
 		err = fastrpc_buf_alloc(ctx->fl, copylen, ctx_attrs,
 					0, 0, &ctx->buf);
 		if (err)
@@ -1327,8 +1329,8 @@ static int get_args(uint32_t kernel, struct smq_invoke_ctx *ctx)
 		uint64_t buf = ptr_to_uint64(lpra[i].buf.pv);
 		size_t len = lpra[i].buf.len;
 
-		rpra[i].buf.pv = lrpra[i].buf.pv = 0;
-		rpra[i].buf.len = lrpra[i].buf.len = len;
+		rpra[i].buf.pv = 0;
+		rpra[i].buf.len = len;
 		if (!len)
 			continue;
 		if (map) {
@@ -2517,13 +2519,15 @@ static int fastrpc_file_free(struct fastrpc_file *fl)
 		return 0;
 	cid = fl->cid;
 
-	(void)fastrpc_release_current_dsp_process(fl);
-
 	spin_lock(&fl->apps->hlock);
 	hlist_del_init(&fl->hn);
 	spin_unlock(&fl->apps->hlock);
 	kfree(fl->debug_buf);
 
+	if (!fl->sctx)
+		goto bail;
+	}
+	(void)fastrpc_release_current_dsp_process(fl);
 	if (!fl->sctx)
 		goto bail;
 
@@ -2845,6 +2849,16 @@ static ssize_t fastrpc_debugfs_read(struct file *filp, char __user *buffer,
 			map->secure, map->attr);
 		}
 		len += scnprintf(fileinfo + len, DEBUGFS_SIZE - len,
+			"\n======%s %s %s======\n", title,
+			" LIST OF BUFS ", title);
+		spin_lock(&fl->hlock);
+		len += scnprintf(fileinfo + len, DEBUGFS_SIZE - len,
+			"%-19s|%-19s|%-19s\n",
+			"virt", "phys", "size");
+		len += scnprintf(fileinfo + len, DEBUGFS_SIZE - len,
+			"%s%s%s%s%s\n", single_line, single_line,
+			single_line, single_line, single_line);
+		len += scnprintf(fileinfo + len, DEBUGFS_SIZE - len,
 			"\n%s %s %s\n", title,
 			" LIST OF PENDING SMQCONTEXTS ", title);
 
@@ -2978,12 +2992,8 @@ static int fastrpc_device_open(struct inode *inode, struct file *filp)
 	if (err)
 		return err;
 	snprintf(strpid, PID_SIZE, "%d", current->pid);
-	buf_size = strlen(current->comm) + strlen("_") + strlen(strpid) + 1;
-	VERIFY(err, NULL != (fl->debug_buf = kzalloc(buf_size, GFP_KERNEL)));
-	if (err) {
-		kfree(fl);
-		return err;
-	}
+	buf_size = strlen(current->comm) + strlen(strpid) + 1;
+	fl->debug_buf = kzalloc(buf_size, GFP_KERNEL);
 	snprintf(fl->debug_buf, UL_SIZE, "%.10s%s%d",
 	current->comm, "_", current->pid);
 	debugfs_file = debugfs_create_file(fl->debug_buf, 0644,
@@ -3262,7 +3272,7 @@ static int fastrpc_restart_notifier_cb(struct notifier_block *nb,
 			else
 				smd_close(ctx->chan);
 
-			ctx->chan = 0;
+			ctx->chan = NULL;
 			pr_info("'restart notifier: closed /dev/%s c %d %d'\n",
 				 gcinfo[cid].name, MAJOR(me->dev_no), cid);
 		}
