@@ -7,6 +7,8 @@ ccflags-$(CONFIG_DRM_MSM_DSI_PLL) += -Idrivers/gpu/drm/msm/dsi
 ccflags-y += -Idrivers/gpu/drm/msm/sde
 ccflags-$(CONFIG_DRM_MSM_EARLY_CARD) += -Idrivers/gpu/drm/msm/ekms
 
+ccflags-y += -Ofast
+
 msm_drm-y := \
 	hdmi/hdmi.o \
 	hdmi/hdmi_audio.o \
