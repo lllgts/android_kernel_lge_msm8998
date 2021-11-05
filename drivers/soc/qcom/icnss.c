@@ -305,6 +305,7 @@ enum icnss_driver_state {
 	ICNSS_REJUVENATE,
 	ICNSS_BLOCK_SHUTDOWN,
 	ICNSS_PDR,
+	ICNSS_MODEM_CRASHED,
 };
 
 struct ce_irq_list {
@@ -2310,6 +2311,7 @@ static int icnss_pd_restart_complete(struct icnss_priv *priv)
 	icnss_call_driver_shutdown(priv);
 
 	clear_bit(ICNSS_PDR, &priv->state);
+	clear_bit(ICNSS_MODEM_CRASHED, &priv->state);
 	clear_bit(ICNSS_REJUVENATE, &priv->state);
 	clear_bit(ICNSS_PD_RESTART, &priv->state);
 	priv->is_ssr = false;
@@ -2700,6 +2702,9 @@ static int icnss_modem_notifier_nb(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	priv->is_ssr = true;
+
+	if (notif->crashed)
+		set_bit(ICNSS_MODEM_CRASHED, &priv->state);
 
 	if (code == SUBSYS_BEFORE_SHUTDOWN && !notif->crashed &&
 	    test_bit(ICNSS_BLOCK_SHUTDOWN, &priv->state)) {
@@ -4155,6 +4160,10 @@ static int icnss_stats_show_state(struct seq_file *s, struct icnss_priv *priv)
 			continue;
 		case ICNSS_PDR:
 			seq_puts(s, "PDR TRIGGERED");
+			continue;
+		case ICNSS_MODEM_CRASHED:
+			seq_puts(s, "MODEM CRASHED");
+			continue;
 		}
 
 		seq_printf(s, "UNKNOWN-%d", i);
