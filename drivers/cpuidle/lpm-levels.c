@@ -44,6 +44,7 @@
 #include <soc/qcom/event_timer.h>
 #include <soc/qcom/lpm-stats.h>
 #include <soc/qcom/jtag.h>
+#include <soc/qcom/minidump.h>
 #include <asm/cputype.h>
 #include <asm/arch_timer.h>
 #include <asm/cacheflush.h>
@@ -62,8 +63,30 @@
 #define PSCI_AFFINITY_LEVEL(lvl) ((lvl & 0x3) << 24)
 static remote_spinlock_t scm_handoff_lock;
 
-static struct system_pm_ops *sys_pm_ops;
+enum {
+	MSM_LPM_LVL_DBG_SUSPEND_LIMITS = BIT(0),
+	MSM_LPM_LVL_DBG_IDLE_LIMITS = BIT(1),
+};
 
+enum debug_event {
+	CPU_ENTER,
+	CPU_EXIT,
+	CLUSTER_ENTER,
+	CLUSTER_EXIT,
+	PRE_PC_CB,
+	CPU_HP_STARTING,
+	CPU_HP_DYING,
+};
+
+struct lpm_debug {
+	cycle_t time;
+	enum debug_event evt;
+	int cpu;
+	uint32_t arg1;
+	uint32_t arg2;
+	uint32_t arg3;
+	uint32_t arg4;
+};
 
 struct lpm_cluster *lpm_root_node;
 
@@ -99,10 +122,11 @@ static DEFINE_PER_CPU(struct lpm_cluster*, cpu_cluster);
 static bool suspend_in_progress;
 static struct hrtimer lpm_hrtimer;
 static struct hrtimer histtimer;
+static struct lpm_debug *lpm_debug;
+static phys_addr_t lpm_debug_phys;
+static const int num_dbg_elements = 0x100;
 static int lpm_cpu_callback(struct notifier_block *cpu_nb,
 				unsigned long action, void *hcpu);
-static DEFINE_PER_CPU(struct hrtimer, histtimer);
-static DEFINE_PER_CPU(struct hrtimer, biastimer);
 
 static void cluster_unprepare(struct lpm_cluster *cluster,
 		const struct cpumask *cpu, int child_idx, bool from_idle,
@@ -288,17 +312,49 @@ int lpm_get_latency(struct latency_level *level, uint32_t *latency)
 }
 EXPORT_SYMBOL(lpm_get_latency);
 
-static int lpm_dying_cpu(unsigned int cpu)
+static void update_debug_pc_event(enum debug_event event, uint32_t arg1,
+		uint32_t arg2, uint32_t arg3, uint32_t arg4)
+{
+	struct lpm_debug *dbg;
+	int idx;
+	static DEFINE_SPINLOCK(debug_lock);
+	static int pc_event_index;
+
+	if (!lpm_debug)
+		return;
+
+	spin_lock(&debug_lock);
+	idx = pc_event_index++;
+	dbg = &lpm_debug[idx & (num_dbg_elements - 1)];
+
+	dbg->evt = event;
+	dbg->time = arch_counter_get_cntvct();
+	dbg->cpu = raw_smp_processor_id();
+	dbg->arg1 = arg1;
+	dbg->arg2 = arg2;
+	dbg->arg3 = arg3;
+	dbg->arg4 = arg4;
+	spin_unlock(&debug_lock);
+}
+
+static int lpm_cpu_callback(struct notifier_block *cpu_nb,
+	unsigned long action, void *hcpu)
 {
 	unsigned long cpu = (unsigned long) hcpu;
 	struct lpm_cluster *cluster = per_cpu(cpu_cluster, (unsigned int) cpu);
 
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_DYING:
+		update_debug_pc_event(CPU_HP_DYING, cpu,
+				cluster->num_children_in_sync.bits[0],
+				cluster->child_cpus.bits[0], false);
 		cluster_prepare(cluster, get_cpu_mask((unsigned int) cpu),
 					NR_LPM_LEVELS, false, 0);
 		break;
 	case CPU_STARTING:
+		update_debug_pc_event(CPU_HP_STARTING, cpu,
+				cluster->num_children_in_sync.bits[0],
+				cluster->child_cpus.bits[0], false);
 		cluster_unprepare(cluster, get_cpu_mask((unsigned int) cpu),
 					NR_LPM_LEVELS, false, 0);
 		break;
@@ -306,8 +362,6 @@ static int lpm_dying_cpu(unsigned int cpu)
 		break;
 	}
 	return NOTIFY_OK;
-	cluster_prepare(cluster, get_cpu_mask(cpu), NR_LPM_LEVELS, false, 0);
-	return 0;
 }
 
 #ifdef CONFIG_ARM_PSCI
@@ -316,9 +370,16 @@ static int __init set_cpuidle_ops(void)
 {
 	int ret = 0, cpu;
 
-	cluster_unprepare(cluster, get_cpu_mask(cpu), NR_LPM_LEVELS, false,
-						0, true);
-	return 0;
+	for_each_possible_cpu(cpu) {
+		ret = arm_cpuidle_init(cpu);
+		if (ret)
+			goto exit;
+	}
+
+exit:
+	return ret;
+}
+
 #endif
 
 static enum hrtimer_restart lpm_hrtimer_cb(struct hrtimer *h)
@@ -1070,6 +1131,9 @@ static int cluster_configure(struct lpm_cluster *cluster, int idx,
 	}
 
 	if (idx != cluster->default_level) {
+		update_debug_pc_event(CLUSTER_ENTER, idx,
+			cluster->num_children_in_sync.bits[0],
+			cluster->child_cpus.bits[0], from_idle);
 		trace_cluster_enter(cluster->cluster_name, idx,
 			cluster->num_children_in_sync.bits[0],
 			cluster->child_cpus.bits[0], from_idle);
@@ -1272,6 +1336,9 @@ static void cluster_unprepare(struct lpm_cluster *cluster,
 		msm_mpm_exit_sleep(from_idle);
 	}
 
+	update_debug_pc_event(CLUSTER_EXIT, cluster->last_level,
+			cluster->num_children_in_sync.bits[0],
+			cluster->child_cpus.bits[0], from_idle);
 	trace_cluster_exit(cluster->cluster_name, cluster->last_level,
 			cluster->num_children_in_sync.bits[0],
 			cluster->child_cpus.bits[0], from_idle);
@@ -1407,24 +1474,6 @@ bool psci_enter_sleep(struct lpm_cluster *cluster, int idx, bool from_idle)
 			start_critical_timings();
 			return 1;
 		}
-		return true;
-	}
-
-	if (from_idle && cpu->levels[idx].use_bc_timer) {
-		if (tick_broadcast_enter())
-			return success
-	}
-
-	state_id = get_cluster_id(cpu->parent, &affinity_level, from_idle);
-	power_state = PSCI_POWER_STATE(cpu->levels[idx].is_reset);
-	affinity_level = PSCI_AFFINITY_LEVEL(affinity_level);
-	state_id += power_state + affinity_level + cpu->levels[idx].psci_id;
-
-	stop_critical_timings();
-
-	success = !arm_cpuidle_suspend(state_id);
-
-	start_critical_timings();
 
 		affinity_level = PSCI_AFFINITY_LEVEL(affinity_level);
 		state_id |= (power_state | affinity_level
@@ -1818,9 +1867,9 @@ static const struct platform_suspend_ops lpm_suspend_ops = {
 static int lpm_probe(struct platform_device *pdev)
 {
 	int ret;
-	unsigned int cpu;
-	struct hrtimer *cpu_histtimer;
+	int size;
 	struct kobject *module_kobj = NULL;
+	struct md_region md_entry;
 
 	get_online_cpus();
 	lpm_root_node = lpm_of_parse_cluster(pdev);
@@ -1845,6 +1894,17 @@ static int lpm_probe(struct platform_device *pdev)
 	hrtimer_init(&histtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	cluster_timer_init(lpm_root_node);
 
+	ret = remote_spin_lock_init(&scm_handoff_lock, SCM_HANDOFF_LOCK_ID);
+	if (ret) {
+		pr_err("%s: Failed initializing scm_handoff_lock (%d)\n",
+			__func__, ret);
+		put_online_cpus();
+		return ret;
+	}
+
+	size = num_dbg_elements * sizeof(struct lpm_debug);
+	lpm_debug = dma_alloc_coherent(&pdev->dev, size,
+			&lpm_debug_phys, GFP_KERNEL);
 	register_cluster_lpm_stats(lpm_root_node, NULL);
 
 	ret = cluster_cpuidle_register(lpm_root_node);
@@ -1869,6 +1929,14 @@ static int lpm_probe(struct platform_device *pdev)
 				__func__);
 		goto failed;
 	}
+
+	/* Add lpm_debug to Minidump*/
+	strlcpy(md_entry.name, "KLPMDEBUG", sizeof(md_entry.name));
+	md_entry.virt_addr = (uintptr_t)lpm_debug;
+	md_entry.phys_addr = lpm_debug_phys;
+	md_entry.size = size;
+	if (msm_minidump_add_region(&md_entry))
+		pr_info("Failed to add lpm_debug in Minidump\n");
 
 	return 0;
 failed:
