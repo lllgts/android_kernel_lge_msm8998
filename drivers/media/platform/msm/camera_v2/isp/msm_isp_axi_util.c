@@ -20,6 +20,8 @@
 
 #define HANDLE_TO_IDX(handle) (handle & 0xFF)
 
+#define OTHER_VFE(vfe_id) (vfe_id == ISP_VFE0 ? ISP_VFE1 : ISP_VFE0)
+
 #ifndef CONFIG_MACH_LGE
 #define ISP_SOF_DEBUG_COUNT 0
 #else

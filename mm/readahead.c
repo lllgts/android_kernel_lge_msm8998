@@ -438,9 +438,9 @@ ondemand_readahead(struct address_space *mapping,
 		ra->start = start;
 		ra->size = start - offset;	/* old async_size */
 		ra->size += req_size;
-		ra->size = get_next_ra_size(ra, max);
+		ra->size = get_next_ra_size(ra, max_pages);
 #ifdef CONFIG_LGE_ADAPTIVE_READAHEAD
-		if(ra->size == max)
+		if(ra->size == max_pages)
 			ra->async_size = ra->size;
 		else
 			ra->async_size = ra->size - ra->size/3;

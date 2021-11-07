@@ -224,7 +224,7 @@ static inline int __msm_queue_find_command_ack_q(void *d1, void *d2)
 	return (ack->stream_id == *(unsigned int *)d2) ? 1 : 0;
 }
 
-static inline void msm_pm_qos_add_request(void)
+static inline void msm_pm_qos_add_request(void);
 #ifdef CONFIG_MACH_LGE
 /* LGE_CHANGE, CST, check whether v4l2 events are subscribed */
 static inline bool msm_event_subscribed(

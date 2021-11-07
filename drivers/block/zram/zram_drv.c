@@ -46,6 +46,11 @@ static const char *default_compressor = "lzo";
 #ifndef CONFIG_HSWAP
 static unsigned int num_devices = 1;
 #else
+/*
+ * Pages that compress to sizes equals or greater than this are stored
+ * uncompressed in memory.
+ */
+static size_t huge_class_size;
 static unsigned int num_devices = 2;
 #endif
 

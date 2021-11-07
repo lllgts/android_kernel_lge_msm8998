@@ -122,6 +122,15 @@ static struct usb_endpoint_descriptor hidg_ss_in_ep_desc = {
 				      */
 };
 
+static struct usb_ss_ep_comp_descriptor hidg_ss_in_comp_desc = {
+	.bLength                = sizeof(hidg_ss_in_comp_desc),
+	.bDescriptorType        = USB_DT_SS_ENDPOINT_COMP,
+
+	/* .bMaxBurst           = 0, */
+	/* .bmAttributes        = 0, */
+	/* .wBytesPerInterval   = DYNAMIC */
+};
+
 static struct usb_endpoint_descriptor hidg_ss_out_ep_desc = {
 	.bLength		= USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType	= USB_DT_ENDPOINT,
@@ -134,11 +143,22 @@ static struct usb_endpoint_descriptor hidg_ss_out_ep_desc = {
 				      */
 };
 
+static struct usb_ss_ep_comp_descriptor hidg_ss_out_comp_desc = {
+	.bLength                = sizeof(hidg_ss_out_comp_desc),
+	.bDescriptorType        = USB_DT_SS_ENDPOINT_COMP,
+
+	/* .bMaxBurst           = 0, */
+	/* .bmAttributes        = 0, */
+	/* .wBytesPerInterval   = DYNAMIC */
+};
+
 static struct usb_descriptor_header *hidg_ss_descriptors[] = {
 	(struct usb_descriptor_header *)&hidg_interface_desc,
 	(struct usb_descriptor_header *)&hidg_desc,
 	(struct usb_descriptor_header *)&hidg_ss_in_ep_desc,
+	(struct usb_descriptor_header *)&hidg_ss_in_comp_desc,
 	(struct usb_descriptor_header *)&hidg_ss_out_ep_desc,
+	(struct usb_descriptor_header *)&hidg_ss_out_comp_desc,
 	NULL,
 };
 #endif
@@ -659,7 +679,7 @@ static void hidg_disable(struct usb_function *f)
 		list_del(&list->list);
 		kfree(list);
 	}
-	spin_unlock_irqrestore(&hidg->spinlock, flags);
+	spin_unlock_irqrestore(&hidg->write_spinlock, flags);
 #ifdef CONFIG_LGE_USB_GADGET
 	}
 #endif

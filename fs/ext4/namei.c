@@ -1278,26 +1278,15 @@ int ext4_search_dir(struct buffer_head *bh, char *search_buf, int buf_size,
 		/* this code is executed quadratically often */
 		/* do minimal checking `by hand' */
 
-		if ((char *) de + de->name_len <= dlimit) {
-			res = ext4_match(fname, de);
-			if (res < 0) {
-				res = -1;
-				goto return_result;
-			}
-			if (res > 0) {
-				/* found a match - just to be sure, do
-				 * a full check */
-				if (ext4_check_dir_entry(dir, NULL, de, bh,
-						bh->b_data,
-						 bh->b_size, offset)) {
-					res = -1;
-					goto return_result;
-				}
-				*res_dir = de;
-				res = 1;
-				goto return_result;
-			}
-
+		if ((char *) de + de->name_len <= dlimit &&
+		    ext4_match(fname, de)) {
+			/* found a match - just to be sure, do
+			 * a full check */
+			if (ext4_check_dir_entry(dir, NULL, de, bh, search_buf,
+						 buf_size, offset))
+				return -1;
+			*res_dir = de;
+			return 1;
 		}
 		/* prevent looping on a bad block */
 		de_len = ext4_rec_len_from_disk(de->rec_len,
