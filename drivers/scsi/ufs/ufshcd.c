@@ -6790,20 +6790,17 @@ static int ufshcd_eh_device_reset_handler(struct scsi_cmnd *cmd)
 {
 	struct Scsi_Host *host;
 	struct ufs_hba *hba;
-	unsigned int tag;
 	u32 pos;
 	int err;
-	u8 resp = 0xF;
-	struct ufshcd_lrb *lrbp;
+	u8 resp = 0xF, lun;
 	unsigned long flags;
 
 	host = cmd->device->host;
 	hba = shost_priv(host);
-	tag = cmd->request->tag;
 
 	ufshcd_print_cmd_log(hba);
-	lrbp = &hba->lrb[tag];
-	err = ufshcd_issue_tm_cmd(hba, lrbp->lun, 0, UFS_LOGICAL_RESET, &resp);
+	lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
+	err = ufshcd_issue_tm_cmd(hba, lun, 0, UFS_LOGICAL_RESET, &resp);
 	if (err || resp != UPIU_TASK_MANAGEMENT_FUNC_COMPL) {
 		if (!err)
 			err = resp;
@@ -6812,7 +6809,7 @@ static int ufshcd_eh_device_reset_handler(struct scsi_cmnd *cmd)
 
 	/* clear the commands that were pending for corresponding LUN */
 	for_each_set_bit(pos, &hba->outstanding_reqs, hba->nutrs) {
-		if (hba->lrb[pos].lun == lrbp->lun) {
+		if (hba->lrb[pos].lun == lun) {
 			err = ufshcd_clear_cmd(hba, pos);
 			if (err)
 				break;
@@ -8167,34 +8164,25 @@ out:
 
 static int ufshcd_setup_vreg(struct ufs_hba *hba, bool on)
 {
-	struct Scsi_Host *host;
-	struct ufs_hba *hba;
-	u32 pos;
-	int err;
-	u8 resp = 0xF, lun;
-	unsigned long flags;
+	int ret = 0;
+	struct device *dev = hba->dev;
+	struct ufs_vreg_info *info = &hba->vreg_info;
 
-	host = cmd->device->host;
-	hba = shost_priv(host);
-
-	lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
-	err = ufshcd_issue_tm_cmd(hba, lun, 0, UFS_LOGICAL_RESET, &resp);
-	if (err || resp != UPIU_TASK_MANAGEMENT_FUNC_COMPL) {
-		if (!err)
-			err = resp;
+	if (!info)
 		goto out;
 
-	/* clear the commands that were pending for corresponding LUN */
-	for_each_set_bit(pos, &hba->outstanding_reqs, hba->nutrs) {
-		if (hba->lrb[pos].lun == lun) {
-			err = ufshcd_clear_cmd(hba, pos);
-			if (err)
-				break;
-		}
-	}
-	spin_lock_irqsave(host->host_lock, flags);
-	ufshcd_transfer_req_compl(hba);
-	spin_unlock_irqrestore(host->host_lock, flags);
+	ret = ufshcd_toggle_vreg(dev, info->vcc, on);
+	if (ret)
+		goto out;
+
+	ret = ufshcd_toggle_vreg(dev, info->vccq, on);
+	if (ret)
+		goto out;
+
+	ret = ufshcd_toggle_vreg(dev, info->vccq2, on);
+	if (ret)
+		goto out;
+
 out:
 	if (ret) {
 		ufshcd_toggle_vreg(dev, info->vccq2, false);
