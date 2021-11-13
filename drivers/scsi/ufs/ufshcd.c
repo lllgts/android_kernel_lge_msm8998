@@ -8167,25 +8167,34 @@ out:
 
 static int ufshcd_setup_vreg(struct ufs_hba *hba, bool on)
 {
-	int ret = 0;
-	struct device *dev = hba->dev;
-	struct ufs_vreg_info *info = &hba->vreg_info;
+	struct Scsi_Host *host;
+	struct ufs_hba *hba;
+	u32 pos;
+	int err;
+	u8 resp = 0xF, lun;
+	unsigned long flags;
 
-	if (!info)
+	host = cmd->device->host;
+	hba = shost_priv(host);
+
+	lun = ufshcd_scsi_to_upiu_lun(cmd->device->lun);
+	err = ufshcd_issue_tm_cmd(hba, lun, 0, UFS_LOGICAL_RESET, &resp);
+	if (err || resp != UPIU_TASK_MANAGEMENT_FUNC_COMPL) {
+		if (!err)
+			err = resp;
 		goto out;
 
-	ret = ufshcd_toggle_vreg(dev, info->vcc, on);
-	if (ret)
-		goto out;
-
-	ret = ufshcd_toggle_vreg(dev, info->vccq, on);
-	if (ret)
-		goto out;
-
-	ret = ufshcd_toggle_vreg(dev, info->vccq2, on);
-	if (ret)
-		goto out;
-
+	/* clear the commands that were pending for corresponding LUN */
+	for_each_set_bit(pos, &hba->outstanding_reqs, hba->nutrs) {
+		if (hba->lrb[pos].lun == lun) {
+			err = ufshcd_clear_cmd(hba, pos);
+			if (err)
+				break;
+		}
+	}
+	spin_lock_irqsave(host->host_lock, flags);
+	ufshcd_transfer_req_compl(hba);
+	spin_unlock_irqrestore(host->host_lock, flags);
 out:
 	if (ret) {
 		ufshcd_toggle_vreg(dev, info->vccq2, false);
