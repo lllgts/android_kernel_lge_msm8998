@@ -9591,12 +9591,6 @@ static int hdd_mode_change_psoc_idle_shutdown(struct device *dev)
 	struct hdd_context *hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
 	int ret;
 
-	ENTER();
-	hdd_debug("Interface change timer expired close the modules!");
-	// 2018.01.16 Add synchronization for hdd_iface_change_callback and wlan_hdd_pld_remove, QCT Case 03298903
-	mutex_lock(&hdd_init_deinit_lock);
-	ret = hdd_wlan_stop_modules(hdd_ctx, false);
-
 	if (!hdd_ctx)
 		return -EINVAL;
 
