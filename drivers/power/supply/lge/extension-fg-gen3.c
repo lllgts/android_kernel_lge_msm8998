@@ -363,14 +363,7 @@ static int calculate_battery_temperature(/* @Nonnull */ struct fg_chip *chip)
 	}
 
 	battemp_icomp = ichg * ichg * tcomp.icoeff / 10000000;
-
-	if (chip->charge_status == POWER_SUPPLY_STATUS_CHARGING && ichg == -23173948) {
-		pr_info("ichg is wrong: cell = %d, bias = %d, icomp = %d, icoeff = %d, ichg = %d remove battemp_icomp from temp\n",
-			battemp_cell, battemp_bias, battemp_icomp, tcomp.icoeff, ichg);
-		temp = battemp_cell + battemp_bias;
-	} else {
-		temp = battemp_cell + battemp_bias - battemp_icomp;
-	}
+	temp = battemp_cell + battemp_bias - battemp_icomp;
 
 	if (tcomp.logging)
 		pr_info("Battery temperature : "
