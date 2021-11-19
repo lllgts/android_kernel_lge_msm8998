@@ -865,15 +865,15 @@ static bool feed_charging_time(int* power, int* rawsoc, int* bsm_ttf)
 		psy = NULL;
 		if (veneer_me->presence_usb)
 			psy = get_psy_usb(veneer_me);
+		}
 		else if (veneer_me->presence_wireless)
 			psy = get_psy_wireless(veneer_me);
-
+		
 		if (psy) {
 			if (!power_supply_get_property(
 					psy, POWER_SUPPLY_PROP_POWER_NOW, &val))
 				*power = val.intval / 1000;
-		}
-
+		
 		psy = get_psy_battery(veneer_me);
 		if (psy) {
 			if (!power_supply_get_property(
