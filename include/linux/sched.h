@@ -2092,6 +2092,7 @@ struct task_struct {
 
 #ifdef CONFIG_ANDROID_SIMPLE_LMK
 	struct task_struct		*simple_lmk_next;
+#endif
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/* A live task holds one reference. */
