@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  * Copyright (C) 2008 Google, Inc.
  *
@@ -67,7 +66,6 @@ enum flat_binder_object_flags {
 	 * @FLAT_BINDER_FLAG_ACCEPTS_FDS: whether the node accepts fds.
 	 */
 	FLAT_BINDER_FLAG_ACCEPTS_FDS = 0x100,
-
 	/**
 	 * @FLAT_BINDER_FLAG_SCHED_POLICY_MASK: bit-mask for scheduling policy
 	 *
@@ -296,7 +294,6 @@ enum transaction_flags {
 	TF_ROOT_OBJECT	= 0x04,	/* contents are the component's root object */
 	TF_STATUS_CODE	= 0x08,	/* contents are a 32-bit status code */
 	TF_ACCEPT_FDS	= 0x10,	/* allow replies with file descriptors */
-	TF_CLEAR_BUF	= 0x20,	/* clear buffer on txn complete */
 };
 
 struct binder_transaction_data {
