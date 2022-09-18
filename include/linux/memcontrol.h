@@ -28,6 +28,9 @@
 #include <linux/eventfd.h>
 #include <linux/mmzone.h>
 #include <linux/writeback.h>
+#ifdef CONFIG_HYPERHOLD
+#include <linux/memcg_policy.h>
+#endif
 
 struct mem_cgroup;
 struct page;
@@ -57,6 +60,13 @@ struct mem_cgroup_reclaim_cookie {
 	int priority;
 	unsigned int generation;
 };
+
+#ifdef CONFIG_HYPERHOLD
+static inline bool is_prot_page(struct page *page)
+{
+	return false;
+}
+#endif
 
 enum mem_cgroup_events_index {
 	MEM_CGROUP_EVENTS_PGPGIN,	/* # of pages paged in */
@@ -254,6 +264,15 @@ struct mem_cgroup {
 	 */
 	struct mem_cgroup_stat_cpu __percpu *stat;
 
+#ifdef CONFIG_HYPERHOLD
+	struct memcg_reclaim memcg_reclaimed;
+	struct list_head score_node;
+	struct list_head son_head;
+	struct list_head list_node;
+#define MEM_CGROUP_NAME_MAX_LEN 100
+	char name[MEM_CGROUP_NAME_MAX_LEN];
+#endif
+
 #if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_INET)
 	struct cg_proto tcp_mem;
 #endif
@@ -284,6 +303,11 @@ struct mem_cgroup {
 	/* WARNING: nodeinfo must be the last member here */
 };
 extern struct cgroup_subsys_state *mem_cgroup_root_css;
+
+#ifdef CONFIG_HYPERHOLD
+struct mem_cgroup *get_next_memcg(struct mem_cgroup *prev);
+void get_next_memcg_break(struct mem_cgroup *prev);
+#endif
 
 /**
  * mem_cgroup_events - count memory events against a cgroup
@@ -478,6 +502,11 @@ static inline void mem_cgroup_count_vm_event(struct mm_struct *mm,
 					     enum vm_event_item idx)
 {
 	struct mem_cgroup *memcg;
+
+#ifdef CONFIG_HYPERHOLD
+	if (!memcg)
+		return;
+#endif
 
 	if (mem_cgroup_disabled())
 		return;

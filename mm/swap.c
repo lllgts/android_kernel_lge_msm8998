@@ -514,6 +514,18 @@ void lru_note_cost(struct lruvec *lruvec, enum lru_cost_type cost,
 
 	lruvec->balance.numer[file] += nr_pages;
 	lruvec->balance.denom += nr_pages;
+#ifdef CONFIG_HYPERHOLD_FILE_LRU
+	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
+	struct zone_reclaim_stat *node_reclaim_stat;
+
+	node_reclaim_stat = &pgdat->lruvec.reclaim_stat;
+	if (!file)
+		node_reclaim_stat->recent_scanned[0]++;
+#endif
+#ifdef CONFIG_HYPERHOLD_FILE_LRU
+		if (!file)
+			node_reclaim_stat->recent_rotated[0]++;
+#endif
 }
 
 static void __activate_page(struct page *page, struct lruvec *lruvec,
