@@ -71,14 +71,36 @@
 
 #include <asm/uaccess.h>
 
+#ifdef CONFIG_HYPERHOLD
+#include <linux/hyperhold_inf.h>
+#include <linux/memcg_policy.h>
+#endif
+
 #include <trace/events/vmscan.h>
 
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
 
 #define MEM_CGROUP_RECLAIM_RETRIES	5
+<<<<<<< HEAD
 static struct mem_cgroup *root_mem_cgroup __read_mostly;
 struct cgroup_subsys_state *mem_cgroup_root_css __read_mostly;
+=======
+
+#ifdef CONFIG_HYPERHOLD
+/* Socket memory accounting disabled? */
+static bool cgroup_memory_nosocket = true;
+
+/* Kernel memory accounting disabled? */
+static bool cgroup_memory_nokmem = true;
+#else
+/* Socket memory accounting disabled? */
+static bool cgroup_memory_nosocket;
+
+/* Kernel memory accounting disabled? */
+static bool cgroup_memory_nokmem;
+#endif
+>>>>>>> c9041f560a65 (mm: Introduct HyperHold memory management framework)
 
 /* Whether the swap controller is active */
 #ifdef CONFIG_MEMCG_SWAP
@@ -534,7 +556,15 @@ static void mem_cgroup_remove_exceeded(struct mem_cgroup_per_zone *mz,
 
 static unsigned long soft_limit_excess(struct mem_cgroup *memcg)
 {
+#ifdef CONFIG_HYPERHOLD_FILE_LRU
+	struct mem_cgroup_per_node *mz = mem_cgroup_nodeinfo(memcg, 0);
+	struct lruvec *lruvec = &mz->lruvec;
+	unsigned long nr_pages = lruvec_lru_size(lruvec, LRU_ACTIVE_ANON,
+			MAX_NR_ZONES) + lruvec_lru_size(lruvec, LRU_INACTIVE_ANON,
+			MAX_NR_ZONES);
+#else
 	unsigned long nr_pages = page_counter_read(&memcg->memory);
+#endif
 	unsigned long soft_limit = READ_ONCE(memcg->soft_limit);
 	unsigned long excess = 0;
 
@@ -1097,6 +1127,14 @@ struct lruvec *mem_cgroup_page_lruvec(struct page *page, struct zone *zone)
 		goto out;
 	}
 
+#ifdef CONFIG_HYPERHOLD_FILE_LRU
+	if (is_file_lru(page_lru(page)) &&
+			!is_prot_page(page)) {
+		lruvec = &pgdat->lruvec;
+		goto out;
+	}
+#endif
+
 	memcg = page->mem_cgroup;
 	/*
 	 * Swapcache readahead pages are added to the LRU - and
@@ -1136,10 +1174,34 @@ void mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
 	if (mem_cgroup_disabled())
 		return;
 
+<<<<<<< HEAD
 	mz = container_of(lruvec, struct mem_cgroup_per_zone, lruvec);
 	lru_size = mz->lru_size + lru;
 	*lru_size += nr_pages;
 	VM_BUG_ON((long)(*lru_size) < 0);
+=======
+#ifdef CONFIG_HYPERHOLD_FILE_LRU
+	if (is_node_lruvec(lruvec))
+		return;
+#endif
+
+	mz = container_of(lruvec, struct mem_cgroup_per_node, lruvec);
+	lru_size = &mz->lru_zone_size[zid][lru];
+
+	if (nr_pages < 0)
+		*lru_size += nr_pages;
+
+	size = *lru_size;
+	if (WARN_ONCE(size < 0,
+		"%s(%p, %d, %d): lru_size %ld\n",
+		__func__, lruvec, lru, nr_pages, size)) {
+		VM_BUG_ON(1);
+		*lru_size = 0;
+	}
+
+	if (nr_pages > 0)
+		*lru_size += nr_pages;
+>>>>>>> c9041f560a65 (mm: Introduct HyperHold memory management framework)
 }
 
 bool task_in_mem_cgroup(struct task_struct *task, struct mem_cgroup *memcg)
@@ -2659,8 +2721,14 @@ unsigned long mem_cgroup_soft_limit_reclaim(struct zone *zone, int order,
 	unsigned long excess;
 	unsigned long nr_scanned;
 
+#ifdef CONFIG_HYPERHOLD
+#define SFT_LIMIT_COSTLY_ORDER 8
+	if (order > SFT_LIMIT_COSTLY_ORDER)
+		return 0;
+#else
 	if (order > 0)
 		return 0;
+#endif
 
 	mctz = soft_limit_tree_node_zone(zone_to_nid(zone), zone_idx(zone));
 	/*
@@ -3254,6 +3322,9 @@ static int memcg_stat_show(struct seq_file *m, void *v)
 		seq_printf(m, "recent_scanned_anon %lu\n", recent_scanned[0]);
 		seq_printf(m, "recent_scanned_file %lu\n", recent_scanned[1]);
 	}
+#endif
+#ifdef CONFIG_HYPERHOLD_DEBUG
+	memcg_eswap_info_show(m);
 #endif
 
 	return 0;
@@ -4178,8 +4249,14 @@ static void mem_cgroup_id_get_many(struct mem_cgroup *memcg, unsigned int n)
 static void mem_cgroup_id_put_many(struct mem_cgroup *memcg, unsigned int n)
 {
 	if (atomic_sub_and_test(n, &memcg->id.ref)) {
+<<<<<<< HEAD
 		idr_remove(&mem_cgroup_idr, memcg->id.id);
 		memcg->id.id = 0;
+=======
+#ifndef CONFIG_HYPERHOLD
+		mem_cgroup_id_remove(memcg);
+#endif
+>>>>>>> c9041f560a65 (mm: Introduct HyperHold memory management framework)
 
 		/* Memcg ID pins CSS */
 		css_put(&memcg->css);
@@ -4346,6 +4423,16 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	spin_lock_init(&memcg->move_lock);
 	vmpressure_init(&memcg->vmpressure);
 	INIT_LIST_HEAD(&memcg->event_list);
+#ifdef CONFIG_HYPERHOLD
+	if (unlikely(!score_head_inited)) {
+		INIT_LIST_HEAD(&score_head);
+		score_head_inited = true;
+	}
+	INIT_LIST_HEAD(&memcg->score_node);
+#ifdef CONFIG_HYPERHOLD_CORE
+	spin_lock_init(&memcg->zram_init_lock);
+#endif
+#endif
 	spin_lock_init(&memcg->event_list_lock);
 #ifdef CONFIG_MEMCG_KMEM
 	memcg->kmemcg_id = -1;
@@ -4373,6 +4460,7 @@ mem_cgroup_css_online(struct cgroup_subsys_state *css)
 	mem_cgroup_id_get(mem_cgroup_from_css(css));
 	css_get(css);
 
+<<<<<<< HEAD
 	if (!parent)
 		return 0;
 
@@ -4383,6 +4471,25 @@ mem_cgroup_css_online(struct cgroup_subsys_state *css)
 	memcg->swappiness = mem_cgroup_swappiness(parent);
 
 	if (parent->use_hierarchy) {
+=======
+#ifdef CONFIG_HYPERHOLD
+	atomic64_set(&memcg->memcg_reclaimed.app_score, 300);
+	atomic64_set(&memcg->memcg_reclaimed.ub_ufs2zram_ratio, 100);
+#ifdef CONFIG_HYPERHOLD_ZSWAPD
+	atomic_set(&memcg->memcg_reclaimed.ub_zram2ufs_ratio, 10);
+	atomic_set(&memcg->memcg_reclaimed.ub_mem2zram_ratio, 60);
+	atomic_set(&memcg->memcg_reclaimed.refault_threshold, 50);
+#endif
+#endif
+	memcg->high = PAGE_COUNTER_MAX;
+	memcg->soft_limit = PAGE_COUNTER_MAX;
+	if (parent) {
+		memcg->swappiness = mem_cgroup_swappiness(parent);
+		memcg->oom_kill_disable = parent->oom_kill_disable;
+	}
+	if (parent && parent->use_hierarchy) {
+		memcg->use_hierarchy = true;
+>>>>>>> c9041f560a65 (mm: Introduct HyperHold memory management framework)
 		page_counter_init(&memcg->memory, &parent->memory);
 		memcg->high = PAGE_COUNTER_MAX;
 		memcg->soft_limit = PAGE_COUNTER_MAX;
@@ -4420,6 +4527,30 @@ mem_cgroup_css_online(struct cgroup_subsys_state *css)
 	 */
 	smp_store_release(&memcg->initialized, 1);
 
+<<<<<<< HEAD
+=======
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys) && !cgroup_memory_nosocket)
+		static_branch_inc(&memcg_sockets_enabled_key);
+
+	return &memcg->css;
+fail:
+	mem_cgroup_id_remove(memcg);
+	mem_cgroup_free(memcg);
+	return ERR_PTR(-ENOMEM);
+}
+
+static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+#ifdef CONFIG_HYPERHOLD
+	memcg_app_score_update(memcg);
+	css_get(css);
+#endif
+	/* Online state pins memcg ID, memcg ID pins CSS */
+	atomic_set(&memcg->id.ref, 1);
+	css_get(css);
+>>>>>>> c9041f560a65 (mm: Introduct HyperHold memory management framework)
 	return 0;
 }
 
@@ -4427,7 +4558,14 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 	struct mem_cgroup_event *event, *tmp;
+#ifdef CONFIG_HYPERHOLD
+	unsigned long flags;
 
+	spin_lock_irqsave(&score_list_lock, flags);
+	list_del_init(&memcg->score_node);
+	spin_unlock_irqrestore(&score_list_lock, flags);
+	css_put(css);
+#endif
 	/*
 	 * Unregister events and notify userspace.
 	 * Notify userspace about cgroup removing only after rmdir of cgroup
@@ -4460,8 +4598,29 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 
+<<<<<<< HEAD
 	memcg_destroy_kmem(memcg);
 	__mem_cgroup_free(memcg);
+=======
+#ifdef CONFIG_HYPERHOLD
+#ifdef CONFIG_HYPERHOLD_CORE
+	hyperhold_mem_cgroup_remove(memcg);
+#endif
+	mem_cgroup_id_remove(memcg);
+#endif
+
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys) && !cgroup_memory_nosocket)
+		static_branch_dec(&memcg_sockets_enabled_key);
+
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) && memcg->tcpmem_active)
+		static_branch_dec(&memcg_sockets_enabled_key);
+
+	vmpressure_cleanup(&memcg->vmpressure);
+	cancel_work_sync(&memcg->high_work);
+	mem_cgroup_remove_from_trees(memcg);
+	memcg_free_kmem(memcg);
+	mem_cgroup_free(memcg);
+>>>>>>> c9041f560a65 (mm: Introduct HyperHold memory management framework)
 }
 
 /**

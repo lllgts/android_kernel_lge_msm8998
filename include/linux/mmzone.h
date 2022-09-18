@@ -701,6 +701,13 @@ typedef struct pglist_data {
 					   mem_hotplug_begin/end() */
 	int kswapd_max_order;
 	enum zone_type classzone_idx;
+
+#ifdef CONFIG_HYPERHOLD_ZSWAPD
+	wait_queue_head_t zswapd_wait;
+	atomic_t zswapd_wait_flag;
+	struct task_struct *zswapd;
+#endif
+
 #ifdef CONFIG_COMPACTION
 	int kcompactd_max_order;
 	enum zone_type kcompactd_classzone_idx;
@@ -797,6 +804,14 @@ static inline struct zone *lruvec_zone(struct lruvec *lruvec)
 #endif
 }
 extern unsigned long get_lru_size(struct lruvec *lruvec, enum lru_list lru);
+
+#ifdef CONFIG_HYPERHOLD_FILE_LRU
+static inline int is_node_lruvec(struct lruvec *lruvec)
+{
+	return &lruvec_pgdat(lruvec)->lruvec == lruvec;
+}
+#endif
+
 
 #ifdef CONFIG_HAVE_MEMORY_PRESENT
 void memory_present(int nid, unsigned long start, unsigned long end);
