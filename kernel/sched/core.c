@@ -1108,7 +1108,6 @@ static struct rq *move_queued_task(struct rq *rq, struct task_struct *p, int new
 	double_unlock_balance(rq, cpu_rq(new_cpu));
 #else
 	set_task_cpu(p, new_cpu);
-	rq_unlock(rq, rf);
 #endif
 
 	rq = cpu_rq(new_cpu);
