@@ -4418,10 +4418,7 @@ void msm_isp_process_axi_irq_stream(struct vfe_device *vfe_dev,
 
 		frame_id_diff = vfe_dev->irq_sof_id - frame_id;
 		if (stream_info->controllable_output && frame_id_diff > 1) {
-			pr_err_ratelimited("%s: scheduling problem do recovery irq_sof_id %d frame_id %d\n",
-				__func__, vfe_dev->irq_sof_id, frame_id);
 			/* scheduling problem need to do recovery */
-			stream_info->buf[pingpong_bit] = done_buf;
 			spin_unlock_irqrestore(&stream_info->lock, flags);
 			msm_isp_halt_send_error(vfe_dev,
 				ISP_EVENT_PING_PONG_MISMATCH);
