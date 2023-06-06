@@ -625,6 +625,10 @@ static void msm_isp_update_framedrop_reg(struct msm_vfe_axi_stream *stream_info,
 	if (stream_info->undelivered_request_cnt > 0)
 		stream_info->current_framedrop_period =
 			MSM_VFE_STREAM_STOP_PERIOD;
+
+	if (stream_info->controllable_output && drop_reconfig == 1)
+		stream_info->current_framedrop_period = 1;
+
 	/*
 	 * re-configure the period pattern, only if it's not already
 	 * set to what we want
@@ -3647,7 +3651,7 @@ static int msm_isp_request_frame(struct vfe_device *vfe_dev,
 		(stream_info->undelivered_request_cnt <=
 			MAX_BUFFERS_IN_HW)
 		) {
-		pr_debug("%s:%d invalid time to request frame %d try drop_reconfig\n",
+		pr_debug("%s:%d invalid time to request frame %d\n",
 			__func__, __LINE__, frame_id);
 		vfe_dev->isp_page->drop_reconfig = 1;
 		return 0;
